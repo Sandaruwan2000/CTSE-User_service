@@ -102,6 +102,6 @@ jobs:
       - name: Check ALB target group health
         if: success()
         run: |
-          TG_ARN=$(aws elbv2 describe-target-groups --names ctse | jq -r '.TargetGroups[0].TargetGroupArn')
+          TG_ARN=$(aws elbv2 describe-target-groups --names user | jq -r '.TargetGroups[0].TargetGroupArn')
           echo "Target group ARN: $TG_ARN"
           aws elbv2 describe-target-health --target-group-arn $TG_ARN
