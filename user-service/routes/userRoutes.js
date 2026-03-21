@@ -26,7 +26,7 @@ router.post(
 
 // POST /users/login
 router.post(
-  '/logins',
+  '/login',
   [
     body('email').isEmail().withMessage('Valid email required').normalizeEmail(),
     body('password').notEmpty().withMessage('Password is required'),

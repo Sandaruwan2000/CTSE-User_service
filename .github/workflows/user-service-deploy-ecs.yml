@@ -18,6 +18,7 @@ jobs:
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
       ECS_TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      TARGET_GROUP_NAME: ${{ vars.TARGET_GROUP_NAME }}
       IMAGE_TAG: ${{ github.sha }}   # unique per commit
 
     steps:
@@ -102,6 +103,7 @@ jobs:
       - name: Check ALB target group health
         if: success()
         run: |
-          TG_ARN=$(aws elbv2 describe-target-groups --names user | jq -r '.TargetGroups[0].TargetGroupArn')
+          TARGET_GROUP_NAME_CLEAN="$(echo "$TARGET_GROUP_NAME" | tr -d '\r\n' | xargs)"
+          TG_ARN=$(aws elbv2 describe-target-groups --names "$TARGET_GROUP_NAME_CLEAN" | jq -r '.TargetGroups[0].TargetGroupArn')
           echo "Target group ARN: $TG_ARN"
           aws elbv2 describe-target-health --target-group-arn $TG_ARN
