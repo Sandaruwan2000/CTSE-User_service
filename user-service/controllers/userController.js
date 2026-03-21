@@ -190,7 +190,7 @@ const deleteUser = async (req, res) => {
       );
       if (data.count > 0) {
         return res.status(409).json({
-          message: `Cannot delete this user: they have ${data.count} order(s) in the system.`,
+          message: `Cannot delete this user: they have ${data.count} active order(s) that are not yet delivered. Please ensure all orders are delivered before deleting this account.`,
         });
       }
     } catch (axiosErr) {
