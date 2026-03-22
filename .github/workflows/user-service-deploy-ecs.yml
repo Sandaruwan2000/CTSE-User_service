@@ -3,18 +3,17 @@ name: Deploy user-service to ECS
 on:
   push:
     branches:
-      - main  # main branch එකට push කරන්න trigger වෙනවා
+      - main  # main branch push එක trigger වෙනවා
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ap-southeast-1
-      # GitHub Secrets
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # value = ctse/user_service
       ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # value = user-service
       ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # value = user-service
-      ECS_CLUSTER: ctse-microservices                 # cluster name (can hardcode or secret)
+      ECS_CLUSTER: ctse-microservices                 # cluster name (hardcoded or secret)
 
     steps:
       # Step 1: Checkout repo
@@ -40,13 +39,12 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          # ✅ IMAGE_URI directly uses correct repo path
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "Building Docker image $IMAGE_URI"
           docker build -t $IMAGE_URI ./user-service
           docker push $IMAGE_URI
 
-      # Step 5: Deploy to ECS
+      # Step 5: Deploy to ECS (null-safe taskRoleArn)
       - name: Deploy to ECS
         run: |
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -54,9 +52,18 @@ jobs:
           # Get current task definition
           aws ecs describe-task-definition --task-definition $ECS_TASK_FAMILY > taskdef.json
 
-          # Update container image
+          # Update container image and handle null taskRoleArn
           jq --arg IMAGE_URI "$IMAGE_URI" \
-            '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI | {family: .taskDefinition.family, containerDefinitions: .taskDefinition.containerDefinitions, volumes: .taskDefinition.volumes, taskRoleArn: .taskDefinition.taskRoleArn, executionRoleArn: .taskDefinition.executionRoleArn, networkMode: .taskDefinition.networkMode, requiresCompatibilities: .taskDefinition.requiresCompatibilities, cpu: .taskDefinition.cpu, memory: .taskDefinition.memory}' \
+            '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI 
+             | {family: .taskDefinition.family,
+                containerDefinitions: .taskDefinition.containerDefinitions,
+                volumes: .taskDefinition.volumes,
+                taskRoleArn: (.taskDefinition.taskRoleArn // ""),
+                executionRoleArn: (.taskDefinition.executionRoleArn // ""),
+                networkMode: .taskDefinition.networkMode,
+                requiresCompatibilities: .taskDefinition.requiresCompatibilities,
+                cpu: .taskDefinition.cpu,
+                memory: .taskDefinition.memory}' \
             taskdef.json > new-taskdef.json
 
           # Register new task definition revision
