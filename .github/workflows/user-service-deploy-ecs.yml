@@ -3,22 +3,25 @@ name: Deploy user-service to ECS
 on:
   push:
     branches:
-      - main
+      - main  # main branch එකට push කරන්න trigger වෙනවා
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ap-southeast-1
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
-      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }}
+      # GitHub Secrets (Name rules followed)
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # Example value: ctse_user_service
+      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # Example value: user-service
+      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # Example value: user-service
+      ECS_CLUSTER: ctse-microservices                 # Your ECS cluster name
 
     steps:
+      # Step 1: Checkout code
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      # Step 2: Configure AWS credentials
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -26,30 +29,38 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Step 3: Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      # Step 4: Build and push Docker image
       - name: Build and push Docker image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Convert underscore in secret value to slash if needed (ctse_user_service → ctse/user_service)
+          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
+          echo "Building Docker image $IMAGE_URI"
           docker build -t $IMAGE_URI ./user-service
           docker push $IMAGE_URI
 
+      # Step 5: Deploy to ECS
       - name: Deploy to ECS
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: latest
         run: |
-          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
 
+          # Get current task definition
           aws ecs describe-task-definition --task-definition $ECS_TASK_FAMILY > taskdef.json
 
-          jq --arg IMAGE_URI "$IMAGE_URI" '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI | {family: .taskDefinition.family, containerDefinitions: .taskDefinition.containerDefinitions, volumes: .taskDefinition.volumes, taskRoleArn: .taskDefinition.taskRoleArn, executionRoleArn: .taskDefinition.executionRoleArn, networkMode: .taskDefinition.networkMode, requiresCompatibilities: .taskDefinition.requiresCompatibilities, cpu: .taskDefinition.cpu, memory: .taskDefinition.memory}' taskdef.json > new-taskdef.json
+          # Update container image
+          jq --arg IMAGE_URI "$IMAGE_URI" \
+            '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI | {family: .taskDefinition.family, containerDefinitions: .taskDefinition.containerDefinitions, volumes: .taskDefinition.volumes, taskRoleArn: .taskDefinition.taskRoleArn, executionRoleArn: .taskDefinition.executionRoleArn, networkMode: .taskDefinition.networkMode, requiresCompatibilities: .taskDefinition.requiresCompatibilities, cpu: .taskDefinition.cpu, memory: .taskDefinition.memory}' \
+            taskdef.json > new-taskdef.json
 
+          # Register new task definition revision
           NEW_REV=$(aws ecs register-task-definition --cli-input-json file://new-taskdef.json | jq -r '.taskDefinition.revision')
 
+          # Update ECS service to use new revision
           aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $ECS_TASK_FAMILY:$NEW_REV --force-new-deployment
