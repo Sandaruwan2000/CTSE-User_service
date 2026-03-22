@@ -18,7 +18,7 @@ app.get('/user/health', (req, res) => {
   res.json({ status: 'ok', service: 'user-service', timestamp: new Date().toISOString() });
 });
 
-app.use('/users', userRoutes);
+app.use('/user', userRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
