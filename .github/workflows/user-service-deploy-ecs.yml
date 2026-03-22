@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'user-service/**'  # triggers only if user-service folder changes
+      - '.github/workflows/user-service-deploy-ecs.yml'  # also trigger when this workflow changes
+  workflow_dispatch:
 
 jobs:
   deploy:
