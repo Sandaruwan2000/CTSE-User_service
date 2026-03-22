@@ -3,7 +3,7 @@ name: Deploy user-service to ECS
 on:
   push:
     branches:
-      - main  # push to main triggers deployment
+      - main
 
 jobs:
   deploy:
@@ -11,16 +11,14 @@ jobs:
     env:
       AWS_REGION: ap-southeast-1
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # ctse_user_service
-      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # user-service
-      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # user-service
-      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}         # ctse-microservices
+      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # user_service
+      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # user_service
+      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}         # ctse_microservices
 
     steps:
-      # Step 1: Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -28,27 +26,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Step 3: Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # Step 4: Build and push Docker image
       - name: Build and push Docker image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          # Convert underscores in secret to slashes for ECR repository path
-          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
+          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "Building Docker image $IMAGE_URI"
           docker build -t $IMAGE_URI ./user-service
           docker push $IMAGE_URI
 
-      # Step 5: Update ECS task definition and redeploy service
       - name: Deploy to ECS
         run: |
-          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
+          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
           # Get current task definition
           aws ecs describe-task-definition --task-definition $ECS_TASK_FAMILY > taskdef.json
