@@ -13,7 +13,7 @@ jobs:
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # value = ctse/user_service
       ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # value = user-service
       ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # value = user-service
-      ECS_CLUSTER: ctse-microservices                 # cluster name (hardcoded or secret)
+      ECS_CLUSTER: ctse-microservices                 # cluster name
 
     steps:
       # Step 1: Checkout repo
@@ -44,7 +44,7 @@ jobs:
           docker build -t $IMAGE_URI ./user-service
           docker push $IMAGE_URI
 
-      # Step 5: Deploy to ECS (null-safe taskRoleArn)
+      # Step 5: Auto update ECS task definition & service
       - name: Deploy to ECS
         run: |
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -52,9 +52,9 @@ jobs:
           # Get current task definition
           aws ecs describe-task-definition --task-definition $ECS_TASK_FAMILY > taskdef.json
 
-          # Update container image and handle null taskRoleArn
+          # Update container image & handle null taskRoleArn/executionRoleArn
           jq --arg IMAGE_URI "$IMAGE_URI" \
-            '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI 
+            '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI
              | {family: .taskDefinition.family,
                 containerDefinitions: .taskDefinition.containerDefinitions,
                 volumes: .taskDefinition.volumes,
@@ -69,5 +69,13 @@ jobs:
           # Register new task definition revision
           NEW_REV=$(aws ecs register-task-definition --cli-input-json file://new-taskdef.json | jq -r '.taskDefinition.revision')
 
-          # Update ECS service to use new revision
-          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $ECS_TASK_FAMILY:$NEW_REV --force-new-deployment
+          echo "New task definition revision: $NEW_REV"
+
+          # Update ECS service to use new revision & force deployment
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition $ECS_TASK_FAMILY:$NEW_REV \
+            --force-new-deployment
+
+          echo "ECS service updated with latest image!"
