@@ -10,10 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ap-southeast-1
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # ctse_user_service
-      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # user_service
-      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # user_service
-      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}         # ctse_microservices
+      ECR_REPOSITORY: ctse/user_service
+      ECS_SERVICE: user-service
+      ECS_TASK_FAMILY: user-service
+      ECS_CLUSTER: ctse-microservices
+      IMAGE_TAG: latest
 
     steps:
       - name: Checkout repo
@@ -33,7 +34,6 @@ jobs:
       - name: Build and push Docker image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: latest
         run: |
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "Building Docker image $IMAGE_URI"
@@ -41,6 +41,8 @@ jobs:
           docker push $IMAGE_URI
 
       - name: Deploy to ECS
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
