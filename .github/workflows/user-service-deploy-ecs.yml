@@ -84,15 +84,15 @@ jobs:
           NEW_REV=$(aws ecs register-task-definition --cli-input-json file://new-taskdef.json | jq -r '.taskDefinition.revision')
           echo "New task definition revision: $NEW_REV"
 
-          # Update ECS service to use new revision & force deployment
-          # Ensure old tasks stop immediately by ECS deployment configuration:
-          # minimumHealthyPercent=0, maximumPercent=100
+          # Update ECS service to use new revision & force deployment.
+          # AZ rebalancing requires maximumPercent > 100.
+          # Keep minimumHealthyPercent=0 to allow fast replacement of old tasks.
           aws ecs update-service \
             --cluster "$ECS_CLUSTER_CLEAN" \
             --service "$ECS_SERVICE_CLEAN" \
             --task-definition "$ECS_TASK_FAMILY_CLEAN:$NEW_REV" \
             --force-new-deployment \
-            --deployment-configuration "maximumPercent=100,minimumHealthyPercent=0"
+            --deployment-configuration "maximumPercent=200,minimumHealthyPercent=0"
 
           echo "ECS service updated with latest revision!"
 
