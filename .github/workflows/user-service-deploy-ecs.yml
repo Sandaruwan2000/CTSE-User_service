@@ -3,24 +3,24 @@ name: Deploy user-service to ECS
 on:
   push:
     branches:
-      - main  # main branch push එක trigger වෙනවා
+      - main  # push to main triggers deployment
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ap-southeast-1
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # value = ctse/user_service
-      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # value = user-service
-      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # value = user-service
-      ECS_CLUSTER: ctse-microservices                 # cluster name
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}   # ctse_user_service
+      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}         # user-service
+      ECS_TASK_FAMILY: ${{ secrets.ECS_TASK_FAMILY }} # user-service
+      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}         # ctse-microservices
 
     steps:
       # Step 1: Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials
+      # Step 2: Configure AWS
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -39,20 +39,21 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: latest
         run: |
-          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Convert underscores in secret to slashes for ECR repository path
+          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
           echo "Building Docker image $IMAGE_URI"
           docker build -t $IMAGE_URI ./user-service
           docker push $IMAGE_URI
 
-      # Step 5: Auto update ECS task definition & service
+      # Step 5: Update ECS task definition and redeploy service
       - name: Deploy to ECS
         run: |
-          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          IMAGE_URI=$REGISTRY/${ECR_REPOSITORY//_//}:$IMAGE_TAG
 
           # Get current task definition
           aws ecs describe-task-definition --task-definition $ECS_TASK_FAMILY > taskdef.json
 
-          # Update container image & handle null taskRoleArn/executionRoleArn
+          # Update container image & handle null roles
           jq --arg IMAGE_URI "$IMAGE_URI" \
             '.taskDefinition.containerDefinitions[0].image=$IMAGE_URI
              | {family: .taskDefinition.family,
@@ -68,7 +69,6 @@ jobs:
 
           # Register new task definition revision
           NEW_REV=$(aws ecs register-task-definition --cli-input-json file://new-taskdef.json | jq -r '.taskDefinition.revision')
-
           echo "New task definition revision: $NEW_REV"
 
           # Update ECS service to use new revision & force deployment
