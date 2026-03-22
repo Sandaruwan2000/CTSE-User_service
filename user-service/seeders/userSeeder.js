@@ -1,11 +1,4 @@
-/**
- * PothaGedara.lk - User Seeder
- * Seeds the database with sample users including 1 admin and 5 customers.
- *
- * Usage:
- *   node seeders/userSeeder.js           -> import (seed) users
- *   node seeders/userSeeder.js --destroy -> wipe all users from DB
- */
+
 
 require('dotenv').config();
 const mongoose = require('mongoose');
