@@ -16,14 +16,14 @@ jobs:
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
       ECS_TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-      IMAGE_TAG: ${{ github.sha }}   # immutable image tag per commit
+      IMAGE_TAG: ${{ github.sha }}   # unique per commit
 
     steps:
       # 1️⃣ Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # 2️⃣ Configure AWS
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -44,14 +44,13 @@ jobs:
           REGISTRY_CLEAN="$(echo "$REGISTRY" | tr -d '\r\n' | xargs)"
           ECR_REPOSITORY_CLEAN="$(echo "$ECR_REPOSITORY" | tr -d '\r\n' | xargs)"
           IMAGE_TAG_CLEAN="$(echo "$IMAGE_TAG" | tr -d '\r\n' | xargs)"
-
           IMAGE_URI="${REGISTRY_CLEAN}/${ECR_REPOSITORY_CLEAN}:${IMAGE_TAG_CLEAN}"
 
           echo "Building Docker image: $IMAGE_URI"
           docker build -t "$IMAGE_URI" ./user-service
           docker push "$IMAGE_URI"
 
-      # 5️⃣ Deploy to ECS
+      # 5️⃣ Deploy to ECS with immediate stop of old tasks
       - name: Deploy to ECS
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -62,7 +61,6 @@ jobs:
           ECS_CLUSTER_CLEAN="$(echo "$ECS_CLUSTER" | tr -d '\r\n' | xargs)"
           ECS_SERVICE_CLEAN="$(echo "$ECS_SERVICE" | tr -d '\r\n' | xargs)"
           ECS_TASK_FAMILY_CLEAN="$(echo "$ECS_TASK_FAMILY" | tr -d '\r\n' | xargs)"
-
           IMAGE_URI="${REGISTRY_CLEAN}/${ECR_REPOSITORY_CLEAN}:${IMAGE_TAG_CLEAN}"
 
           # Get current task definition
@@ -87,17 +85,21 @@ jobs:
           echo "New task definition revision: $NEW_REV"
 
           # Update ECS service to use new revision & force deployment
+          # Ensure old tasks stop immediately by ECS deployment configuration:
+          # minimumHealthyPercent=0, maximumPercent=100
           aws ecs update-service \
             --cluster "$ECS_CLUSTER_CLEAN" \
             --service "$ECS_SERVICE_CLEAN" \
             --task-definition "$ECS_TASK_FAMILY_CLEAN:$NEW_REV" \
-            --force-new-deployment
+            --force-new-deployment \
+            --deployment-configuration "maximumPercent=100,minimumHealthyPercent=0"
 
-          echo "ECS service updated with latest image!"
+          echo "ECS service updated with latest revision!"
 
-      # 6️⃣ Optional: Check ALB target health
+      # 6️⃣ Optional: Check ALB target group health
       - name: Check ALB target group health
         if: success()
         run: |
           TG_ARN=$(aws elbv2 describe-target-groups --names ctse | jq -r '.TargetGroups[0].TargetGroupArn')
+          echo "Target group ARN: $TG_ARN"
           aws elbv2 describe-target-health --target-group-arn $TG_ARN
